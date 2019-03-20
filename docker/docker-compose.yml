@@ -1,0 +1,8 @@
+version: '3'
+services:
+  leaderboard-processor:
+    image: mm-final-score-processor:latest
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile
+    network_mode: "host"

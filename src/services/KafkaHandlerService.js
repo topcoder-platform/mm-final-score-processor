@@ -1,82 +1,104 @@
-require("../bootstrap");
-require("dotenv").config();
+/**
+ * Kafka handler Service
+ */
 
-const _ = require("lodash");
-const busApi = require("tc-bus-api-wrapper");
-const config = require("config");
-const logger = require("../common/logger");
-const { makeRequest } = require("../common/helper");
+const _ = require('lodash')
+const config = require('config')
+const joi = require('joi')
+const logger = require('../common/logger')
+const helper = require('../common/helper')
+const producer = helper.producer
 
-const busApiClient = busApi(
-  _.pick(config, [
-    "AUTH0_URL",
-    "AUTH0_AUDIENCE",
-    "TOKEN_CACHE_TIME",
-    "AUTH0_CLIENT_ID",
-    "AUTH0_CLIENT_SECRET",
-    "BUSAPI_URL",
-    "KAFKA_ERROR_TOPIC"
-  ])
-);
+/**
+ * Process final score
+ * @param {Object} message the kafka message
+ * @returns {Boolean} the flag indicate this message is committed or not
+ */
+async function handle (message) {
+  const token = await helper.getM2Mtoken()
 
-async function handle(message) {
-  try {
-    const challengeReq = await makeRequest(
-      "GET",
-      `${config.API.V4}/${message.payload.projectId}`
-    );
-    const challengeType = _.get(challengeReq, "body.result.content.subTrack");
-    logger.debug(challengeType);
-    logger.debug(config.CHALLENGE_SUBTRACK);
-    if (!(challengeType && config.CHALLENGE_SUBTRACK.includes(challengeType))) {
-      logger.debug("Skipping as challenge is Non-MM Type");
-      return;
+  const challengeReq = await helper.getRequest(
+    `${config.API.CHALLENGE_API_URL}/${message.payload.projectId}`, {}, token)
+  const challengeType = _.get(challengeReq, 'body.result.content.subTrack')
+
+  if (!(challengeType && config.CHALLENGE_SUBTRACK.includes(challengeType))) {
+    logger.debug('Skipping as challenge is Non-MM Type')
+    return false
+  }
+
+  const challengeData = _.get(challengeReq, 'body.result.content')
+  const registrants = _.map(
+    _.get(challengeData, 'submissions', []),
+    submitter => submitter.submitterId
+  )
+  const result = await helper.fetchAll(config.API.SUBMISSION_API_URL, {
+    perPage: 100,
+    challengeId: message.payload.projectId
+  }, token)
+  let submissionByUser = {}
+  for (let i = 0; i < result.length; i++) {
+    if (!submissionByUser[result[i].memberId]) {
+      submissionByUser[result[i].memberId] = []
     }
+    submissionByUser[result[i].memberId].push(result[i])
+  }
 
-    const challengeData = _.get(challengeReq, "body.result.content");
-    const registrants = _.map(
-      _.get(challengeData, "submissions", []),
-      submitter => submitter.submitterId
-    );
-    for (let i = 0; i < registrants.length; i += 1) {
-      const url = `${config.API.V5}?perPage=100&challengeId=${
-        message.payload.projectId
-      }&memberId=${registrants[i]}`;
-      const submissionReq = await makeRequest("GET", url);
-      const submissions = _.get(submissionReq, "body");
-      const lastSub = submissions[submissions.length - 1];
-      const review = _.find(_.get(lastSub, "review", []), r => {
-        return config.SCORER_REVIEW_TYPE_ID.includes(r.typeId);
-      });
+  for (let i = 0; i < registrants.length; i++) {
+    const submissions = submissionByUser[registrants[i]]
+    const lastSub = submissions[submissions.length - 1]
+    const review = _.find(_.get(lastSub, 'review', []), r => {
+      return config.SCORER_REVIEW_TYPE_ID.includes(r.typeId)
+    })
 
+    if (review) {
       const payload = {
-        ..._.pick(review, ["id", "submissionId", "typeId"])
-      };
+        ..._.pick(review, ['id', 'submissionId', 'typeId'])
+      }
 
       if (payload.submissionId && payload.typeId) {
-        payload.resource = "score";
-        payload.testType = config.TEST_TYPE;
+        payload.resource = 'score'
+        payload.testType = config.TEST_TYPE
 
-        const reqBody = {
+        const messageToSent = {
           topic: config.TOPIC_NAME,
           originator: config.ORIGINATOR,
           timestamp: new Date().toISOString(),
-          "mime-type": "application/json",
+          'mime-type': 'application/json',
           payload
-        };
+        }
 
-        logger.debug(`Score message ${reqBody}`);
+        await producer.send({
+          topic: messageToSent.topic,
+          message: {
+            value: JSON.stringify(messageToSent)
+          }
+        })
 
-        await busApiClient.postEvent(reqBody);
+        logger.debug(`Score message ${JSON.stringify(messageToSent)}`)
       } else {
-        logger.info(`skipping ${lastSub}`);
+        logger.info(`skipping ${JSON.stringify(lastSub)}`)
       }
+    } else {
+      logger.info(`skipping ${JSON.stringify(lastSub)}`)
     }
-  } catch (e) {
-    logger.error(e.message);
   }
+  return true
+}
+
+handle.schema = {
+  message: joi.object().keys({
+    topic: joi.string().required(),
+    originator: joi.string().required(),
+    timestamp: joi.date().required(),
+    'mime-type': joi.string().required(),
+    payload: joi.object().keys({
+      projectId: joi.number().required()
+    }).unknown().required()
+  }).required()
 }
 
 module.exports = {
   handle
-};
+}
+
+logger.buildService(module.exports)

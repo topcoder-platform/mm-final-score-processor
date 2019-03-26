@@ -2,45 +2,77 @@
  * Contains generic helper methods
  */
 
-const config = require('config')
 const _ = require('lodash')
+const config = require('config')
 const request = require('superagent')
-const logger = require('./logger')
-
+const Kafka = require('no-kafka')
 const m2mAuth = require('tc-core-library-js').auth.m2m
-const m2m = m2mAuth(_.pick(config, ['AUTH0_URL', 'AUTH0_AUDIENCE', 'TOKEN_CACHE_TIME']))
+const m2m = m2mAuth(_.pick(config, ['AUTH0_URL', 'AUTH0_AUDIENCE', 'TOKEN_CACHE_TIME', 'AUTH0_PROXY_SERVER_URL']))
 
-/*
- * Function to get M2M token
- * @returns {Promise}
+const producer = new Kafka.Producer(getKafkaOptions())
+
+/**
+ * Get M2M token
+ * @return {String} m2m token
  */
-const getM2Mtoken = async () => {
+async function getM2Mtoken () {
   return m2m.getMachineToken(config.AUTH0_CLIENT_ID, config.AUTH0_CLIENT_SECRET)
 }
 
 /**
- * Function to make request
- * @param {String} reqType Type of the request GET / POST
- * @param {String} path Complete path of the API URL
- * @param {Object} reqBody Body of the request
- * @returns {Promise} Promise of the response
+ * Uses superagent to proxy get request
+ * @param {String} url the url
+ * @param {Object} query the query object
+ * @param {String} m2mToken the M2M token
+ * @returns {Object} the response
  */
-const makeRequest = async (reqType, path, reqBody) => {
-  const token = await getM2Mtoken()
-  if (reqType === 'POST') {
-    return request
-      .post(path)
-      .set('Authorization', `Bearer ${token}`)
-      .set('Content-Type', 'application/json')
-      .send(reqBody)
-  } else if (reqType === 'GET') {
-    return request
-      .get(path)
-      .set('Authorization', `Bearer ${token}`)
-      .set('Content-Type', 'application/json')
+async function getRequest (url, query, m2mToken) {
+  return request
+    .get(url)
+    .query(query)
+    .set('Authorization', `Bearer ${m2mToken}`)
+    .set('Content-Type', 'application/json')
+}
+
+/**
+ * Fetch all resources.
+ * @param {String} url the url
+ * @param {Object} query the query object
+ * @param {String} m2mToken the M2M token
+ * @returns {Object} the response
+ */
+async function fetchAll (url, query) {
+  const m2mToken = await getM2Mtoken()
+  const res = await getRequest(url, query, m2mToken)
+  let result = res.body
+  const totalPage = Number(res.header['x-total-pages'])
+  if (totalPage > 1) {
+    const requests = []
+    for (let i = 2; i <= totalPage; i++) {
+      requests.push(getRequest(url, _.assign({ page: i }, query), m2mToken))
+    }
+    const extraRes = await Promise.all(requests)
+    result = _.reduce(extraRes, (ret, e) => ret.concat(e.body), result)
   }
+  return result
+}
+
+/**
+ * Get Kafka options
+ * @return {Object} the Kafka options
+ */
+function getKafkaOptions () {
+  const options = { connectionString: config.KAFKA_URL, groupId: config.KAFKA_GROUP_ID }
+  if (config.KAFKA_CLIENT_CERT && config.KAFKA_CLIENT_CERT_KEY) {
+    options.ssl = { cert: config.KAFKA_CLIENT_CERT, key: config.KAFKA_CLIENT_CERT_KEY }
+  }
+  return options
 }
 
 module.exports = {
-  makeRequest
+  getM2Mtoken,
+  getRequest,
+  fetchAll,
+  getKafkaOptions,
+  producer
 }

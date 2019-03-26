@@ -2,4 +2,4 @@
  * Init app
  */
 
-global.Promise = require("bluebird");
+global.Promise = require('bluebird')

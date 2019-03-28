@@ -1,6 +1,7 @@
 #!/bin/bash
 set -eo pipefail
 UPDATE_CACHE=""
+echo "" > docker/api.env
 docker-compose -f docker/docker-compose.yml build mm-final-score-processor
 docker create --name app mm-final-score-processor:latest
 

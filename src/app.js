@@ -42,15 +42,7 @@ const dataHandler = (messageSet, topic, partition) => Promise.each(messageSet, a
     return
   }
 
-  if (messageJSON.topic !== topic) {
-    logger.error(`The message topic ${messageJSON.topic} doesn't match the Kafka topic ${topic}.`)
-
-    // commit the message and ignore it
-    await consumer.commitOffset({ topic, partition, offset: m.offset })
-    return
-  }
-
-  if (topic === config.AUTOPILOT_EVENT_TOPIC && messageJSON.payload &&
+  if (messageJSON.payload &&
     (messageJSON.payload.phaseTypeName !== 'Review' || messageJSON.payload.state !== 'START')) {
     logger.debug(`Ignoring other auto pilot events from Topic: ${topic}`)
     // Ignore the message

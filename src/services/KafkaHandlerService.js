@@ -56,7 +56,7 @@ async function handle (message) {
 
   for (let i = 0; i < submissionForFinalRun.length; i++) {
     const payload = {}
-    payload.submissionId = _.pick(submissionForFinalRun[i], ['id'])
+    payload.submissionId = submissionForFinalRun[i].id
     payload.resource = 'score'
     payload.id = uuid()
     payload.testType = 'system'

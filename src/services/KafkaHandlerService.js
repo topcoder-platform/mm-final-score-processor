@@ -69,6 +69,7 @@ async function handle (message) {
       payload
     }
 
+    logger.debug(`sending message ${JSON.stringify(messageToSent)}`)
     await producer.send({
       topic: messageToSent.topic,
       message: {

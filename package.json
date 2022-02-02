@@ -24,7 +24,7 @@
     "tc-bus-api-wrapper": "topcoder-platform/tc-bus-api-wrapper.git",
     "tc-core-library-js": "appirio-tech/tc-core-library-js.git#v2.6",
     "topcoder-healthcheck-dropin": "^1.0.3",
-    "uuid": "^3.3.3",
+    "uuid": "^3.4.0",
     "winston": "^3.2.1"
   },
   "devDependencies": {

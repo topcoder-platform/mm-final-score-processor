@@ -14,7 +14,7 @@
   "author": "TCSCODER",
   "license": "ISC",
   "dependencies": {
-    "bluebird": "^3.5.3",
+    "bluebird": "^3.7.2",
     "config": "^3.0.1",
     "get-parameter-names": "^0.3.0",
     "http-json-response": "^1.0.1",

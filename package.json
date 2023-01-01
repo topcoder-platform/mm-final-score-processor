@@ -15,7 +15,7 @@
   "license": "ISC",
   "dependencies": {
     "bluebird": "^3.5.3",
-    "config": "^3.0.1",
+    "config": "^3.3.8",
     "get-parameter-names": "^0.3.0",
     "http-json-response": "^1.0.1",
     "lodash": "^4.17.11",
